@@ -1,4 +1,4 @@
-# rippleapi
+# rippleapi - Modifed for the osu! private server: Atoka
 
 This is the source code for Ripple's API.
 
@@ -18,3 +18,13 @@ The API is crammed with terrible design. First of all, it is not RESTful, and as
 
 The not-making-it-RESTful was the biggest sin of the API. In itself, the API was a step into the right direction (it is MUCH better than the official osu! API), but nowhere close to how an API actually is, ideally. If you are building an API, I won't recommend you a book, but instead I will recommend you to see what [GitHub](https://developer.github.com/v3/) does, as they will have probably faced most problems that you have, and provided an answer already. If you're unsure, check other APIs: Discord, Slack, Twitter, Stripe, to name a few.
 
+## How to install?
+
+* Download it: `go get -u github.com/osuatoka/rippleapi`
+* Go to it: `cd $GOPATH/src/zxq.co/ripple/rippleapi`
+* Install dependencies: `./dep ensure` <-- Run this in `$GOPATH/src/zxq.co/ripple/rippleapi`
+* Build it: `go build .`
+* Run it: `go run .`
+* Edit configuration: `nano api.conf`
+
+If you don't know how to do any of this, you aren't qualified.

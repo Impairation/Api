@@ -25,6 +25,22 @@ type leaderboardResponse struct {
 	Users []leaderboardUser `json:"users"`
 }
 
+const rxUserQuery = `
+		SELECT
+			users.id, users.username, users.register_datetime, users.privileges, users.latest_activity,
+
+			rx_stats.username_aka, users_stats.country,
+			rx_stats.play_style, rx_stats.favourite_mode,
+
+			rx_stats.ranked_score_%[1]s, rx_stats.total_score_%[1]s, rx_stats.playcount_%[1]s,
+			rx_stats.replays_watched_%[1]s, rx_stats.total_hits_%[1]s,
+			rx_stats.avg_accuracy_%[1]s, rx_stats.pp_%[1]s
+		FROM users
+		INNER JOIN rx_stats ON rx_stats.id = users.id
+		INNER JOIN users_stats ON users_stats.id = users.id
+		WHERE users.id IN (?)
+		`
+
 const lbUserQuery = `
 SELECT
 	users.id, users.username, users.register_datetime, users.privileges, users.latest_activity,
@@ -43,15 +59,16 @@ WHERE users.id IN (?)
 // LeaderboardGET gets the leaderboard.
 func LeaderboardGET(md common.MethodData) common.CodeMessager {
 	m := getMode(md.Query("mode"))
-
 	// md.Query.Country
 	p := common.Int(md.Query("p")) - 1
 	if p < 0 {
 		p = 0
 	}
 	l := common.InString(1, md.Query("l"), 500, 50)
-
 	key := "ripple:leaderboard:" + m
+	if common.Int(md.Query("rx")) != 0 {
+		key = "ripple:relaxboard:" + m
+	}
 	if md.Query("country") != "" {
 		key += ":" + md.Query("country")
 	}
@@ -68,8 +85,10 @@ func LeaderboardGET(md common.MethodData) common.CodeMessager {
 	if len(results) == 0 {
 		return resp
 	}
-
 	query := fmt.Sprintf(lbUserQuery+` ORDER BY users_stats.pp_%[1]s DESC, users_stats.ranked_score_%[1]s DESC`, m)
+	if common.Int(md.Query("rx")) != 0 {
+		query = fmt.Sprintf(rxUserQuery+` ORDER BY rx_stats.pp_%[1]s DESC, rx_stats.ranked_score_%[1]s DESC`, m)
+	}
 	query, params, _ := sqlx.In(query, results)
 	rows, err := md.DB.Query(query, params...)
 	if err != nil {
@@ -92,11 +111,20 @@ func LeaderboardGET(md common.MethodData) common.CodeMessager {
 			continue
 		}
 		u.ChosenMode.Level = ocl.GetLevelPrecise(int64(u.ChosenMode.TotalScore))
-		if i := leaderboardPosition(md.R, m, u.ID); i != nil {
-			u.ChosenMode.GlobalLeaderboardRank = i
-		}
-		if i := countryPosition(md.R, m, u.ID, u.Country); i != nil {
-			u.ChosenMode.CountryLeaderboardRank = i
+		if common.Int(md.Query("rx")) != 0 {
+			if i := relaxboardPosition(md.R, m, u.ID); i != nil {
+				u.ChosenMode.GlobalLeaderboardRank = i
+			}
+			if i := rxcountryPosition(md.R, m, u.ID, u.Country); i != nil {
+				u.ChosenMode.CountryLeaderboardRank = i
+			}
+		} else {
+			if i := leaderboardPosition(md.R, m, u.ID); i != nil {
+				u.ChosenMode.GlobalLeaderboardRank = i
+			}
+			if i := countryPosition(md.R, m, u.ID, u.Country); i != nil {
+				u.ChosenMode.CountryLeaderboardRank = i
+			}
 		}
 		resp.Users = append(resp.Users, u)
 	}
@@ -109,6 +137,14 @@ func leaderboardPosition(r *redis.Client, mode string, user int) *int {
 
 func countryPosition(r *redis.Client, mode string, user int, country string) *int {
 	return _position(r, "ripple:leaderboard:"+mode+":"+strings.ToLower(country), user)
+}
+
+func relaxboardPosition(r *redis.Client, mode string, user int) *int {
+	return _position(r, "ripple:relaxboard:"+mode, user)
+}
+
+func rxcountryPosition(r *redis.Client, mode string, user int, country string) *int {
+	return _position(r, "ripple:relaxboard:"+mode+":"+strings.ToLower(country), user)
 }
 
 func _position(r *redis.Client, key string, user int) *int {

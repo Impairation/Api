@@ -64,8 +64,12 @@ func UsersSelfSettingsPOST(md common.MethodData) common.CodeMessager {
 	var d userSettingsData
 	md.Unmarshal(&d)
 
+	aka := strings.TrimSpace(*d.UsernameAKA)
+	if aka == "" {
+		*d.UsernameAKA = ""
+	}
+
 	// input sanitisation
-	*d.UsernameAKA = common.SanitiseString(*d.UsernameAKA)
 	if md.User.UserPrivileges&common.UserPrivilegeDonor > 0 {
 		d.CustomBadge.Name = common.SanitiseString(d.CustomBadge.Name)
 		d.CustomBadge.Icon = sanitiseIconName(d.CustomBadge.Icon)

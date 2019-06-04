@@ -49,16 +49,14 @@ type scoresResponse struct {
 // ScoresGET retrieves the top scores for a certain beatmap.
 func ScoresGET(md common.MethodData) common.CodeMessager {
 	var (
-		where = new(common.WhereClause)
-		r     scoresResponse
+		beatmapMD5 string
+		r          scoresResponse
 	)
-	pm := md.Ctx.Request.URI().QueryArgs().PeekMulti
 	switch {
 	case md.Query("md5") != "":
-		where.In("beatmap_md5", pm("md5")...)
+		beatmapMD5 = md.Query("md5")
 	case md.Query("b") != "":
-		var md5 string
-		err := md.DB.Get(&md5, "SELECT beatmap_md5 FROM beatmaps WHERE beatmap_id = ? LIMIT 1", md.Query("b"))
+		err := md.DB.Get(&beatmapMD5, "SELECT beatmap_md5 FROM beatmaps WHERE beatmap_id = ? LIMIT 1", md.Query("b"))
 		switch {
 		case err == sql.ErrNoRows:
 			r.Code = 200
@@ -67,22 +65,15 @@ func ScoresGET(md common.MethodData) common.CodeMessager {
 			md.Err(err)
 			return Err500
 		}
-		where.Where("beatmap_md5 = ?", md5)
+	default:
+		return ErrMissingField("md5|b")
 	}
-	where.In("scores.id", pm("id")...)
 
 	sort := common.Sort(md, common.SortConfiguration{
 		Default: "scores.pp DESC, scores.score DESC",
 		Table:   "scores",
 		Allowed: []string{"pp", "score", "accuracy", "id"},
 	})
-	if where.Clause == "" {
-		return ErrMissingField("must specify at least one queried item")
-	}
-
-	where.Where(` scores.completed = '3' AND `+md.User.OnlyUserPublic(false)+` `+
-		genModeClause(md)+` `+sort+common.Paginate(md.Query("p"), md.Query("l"), 100), "FIF")
-	where.Params = where.Params[:len(where.Params)-1]
 
 	rows, err := md.DB.Query(`
 SELECT
@@ -98,7 +89,9 @@ SELECT
 FROM scores
 INNER JOIN users ON users.id = scores.userid
 INNER JOIN users_stats ON users_stats.id = scores.userid
-`+where.Clause, where.Params...)
+WHERE scores.beatmap_md5 = ? AND scores.completed = '3' AND `+md.User.OnlyUserPublic(false)+
+		` `+genModeClause(md)+`
+`+sort+common.Paginate(md.Query("p"), md.Query("l"), 100), beatmapMD5)
 	if err != nil {
 		md.Err(err)
 		return Err500
